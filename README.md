@@ -1,8 +1,6 @@
-﻿## Kodekloden
+﻿## Bevegelsesdetetor
 
-Et lite prosjekt ment til inspirasjon til barn som kan være interessert i programmering.
+Et lite javascript som kan oppdage bevegelser via webcam.
+Noe som kan enkelt bygges på videre med annen automasjon e.l.
 
-Utfordringene tar utgangspunkt i ekte JavaScript som av natur har en generisk syntaks, 
-benyttet i mange av dagens IT løsninger, og kan bidra til forståelse for generell programmering.
-
-[Start / Begynn her](https://djnedrelid.github.io/Kodekloden/)
+[Vis / Begynn her](https://djnedrelid.github.io/Bevegelsesdetektor/)
