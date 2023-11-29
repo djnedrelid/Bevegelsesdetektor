@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title></title>
+</head>
+<body>
+
+<style type="text/css">
+body {
+	font-family: verdana;
+	font-size: 13px;
+	padding: 20px;
+}
+#camfeed,
+#feed2 {
+	width: 480px;
+	height: 360px;
+	border: 1px solid #ccc;
+}
+#FeedContainer1,
+#FeedContainer2 {
+	margin-bottom: 10px;
+	font-family: verdana;
+	font-size: 13px;
+}
+#MotionCounter {
+	clear: both;
+	font-family: verdana;
+	font-size: 24px;
+	font-weight: bold;
+	width: 500px;
+	padding-top: 50px;
+	margin: 0 auto;
+}
+</style>
+
+<div id="FeedContainer1">
+	<video id="camfeed" autoplay></video><br>
+	[ <b>WEBCAM</b> ]
+</div>
+<div id="FeedContainer2">
+	<canvas id="feed2" width="480" height="360"></canvas><br>
+	[ <b>MOTION DETECTOR</b> ]
+</div>
+<div id="MotionCounter"></div><br>
+
+<div id="WebcamLoadStatus"><b>Browser should ask you for permission to use webcam, if you have one.</b></div>
+
+<script type="text/javascript">
+/*
+	Webcam bevegelsesdetektor basert på native JavaScript kode.
+ 	Inspirert av arbeidet til https://github.com/lonekorean
+ 
+ 	Leser inn bilder parvis fra webcam og sammenligner forskjelligheten 
+ 	ved å trekke fra RGB verdier mellom bak- og forgrunnsbilde i retningen
+ 	som gir positive eller 0-verdier. 
+ 
+	Implementert støyreduksjon ved sammenligning mot nabopiksler.
+	
+	Teller kun bevegelser mellom hver gang det ikke har vært noe.
+	
+	Testprosjekt består av 3 filer.
+	CamUI.html, JavaScript.js, Styles.css
+	
+	DΔG
+ */
+
+// Webcam objekt.
+var CamFeed = document.getElementById('camfeed');
+var Feed2 = document.getElementById('feed2');
+var Feed2Ctx = Feed2.getContext('2d');
+
+// Resten av skriptet bruker disse verdiene.
+// Reflekteres mot verdier satt i CamUI.html
+var CamHeight = 360;
+var CamWidth = 480;
+var MotionCounter = 0;
+var MotionDetected = false;
+
+//
+// Last inn kamera til video element.
+//
+var constraints = {
+    audio: false,
+    video: { width: CamWidth, height: CamHeight }
+};
+navigator.mediaDevices.getUserMedia(constraints)
+    .then(success)
+    .catch(error);
+
+function success(stream) {
+    CamFeed.srcObject = stream;
+}
+
+function error(error) {
+	console.log(error);
+	document.getElementById('WebcamLoadStatus').innerHTML = '<b>Webcam device not found</b>.';
+}
+
+//
+// Midlertidig canvas for å gjøre blend mode sjekking på.
+// Sjekking gjøres ved at den høyeste fargeverdien i hver 
+// RGB kanal fra 2 forskjellige bilder trekkes fra den andre. 
+// Resterende verdi betyr bevegelse hvis verdien er over 0.
+//
+var BlendCanvas = document.createElement('canvas');
+BlendCanvas.width = CamWidth;
+BlendCanvas.height = CamHeight;
+var BlendCanvasCtx = BlendCanvas.getContext('2d');
+BlendCanvasCtx.globalCompositeOperation = 'difference';
+var ImageDrawnCounter = 0;
+
+// Intervall for henting av bilde til midlertidig canvas.
+setInterval(GetCamImage,100);
+
+function GetCamImage() {
+	
+	// Hold styr på at kun 2 bilder om gangen sammenlignes.
+	// Hvis ikke blir annenhvert bilde regnet som forskjellig.
+	if (ImageDrawnCounter >= 2) {
+		BlendCanvasCtx.clearRect(
+			0,
+			0,
+			BlendCanvas.width,
+			BlendCanvas.height
+		);
+		ImageDrawnCounter = 0;
+	}
+	
+	// Hent stillbilde fra webcam.
+	BlendCanvasCtx.drawImage(CamFeed,0,0,CamWidth,CamHeight);
+	ImageDrawnCounter += 1;
+	
+	if (ImageDrawnCounter != 2)
+		return;
+	
+	// Hent bildedata hvis 2 bilder er klare for sammenligning.
+	var ImageData = BlendCanvasCtx.getImageData(
+		0,
+		0,
+		BlendCanvas.width,
+		BlendCanvas.height
+	);
+	
+	//
+	// Gjør all bevegelse til full grønn for klarhet.
+	// Legg i tillegg til en terskel for bevegelse.
+	//
+	var Snitt, R, G, B;
+	var Terskel = 20;
+	for (var n=0; n<ImageData.data.length; n+=4) {
+		R = ImageData.data[n];
+		G = ImageData.data[n+1];
+		B = ImageData.data[n+2];
+		Snitt = (R+G+B)/3;
+		
+		// Sett piksel til svart hvis under terskel.
+		ImageData.data[n] = 0;
+		ImageData.data[n+2] = 0;
+		if (Snitt > Terskel) 
+			ImageData.data[n+1] = 255;
+		else 
+			ImageData.data[n+1] = 0;
+	}
+	
+	//
+	// Støyreduksjon. Sjekk om nabopiksler har samme verdi.
+	//
+	var NoiseRange = 5;
+	for (var n=0; n<ImageData.data.length; n+=4) {
+		for (var n2=1; n2<=5; n2++) {
+			if (ImageData.data[n+1] != ImageData.data[n+(n2*4)+1]) {
+				ImageData.data[n+1] = 0;
+				break;
+			}
+		}
+	}
+	
+	//
+	// Var det noe bevegelse i bildet?
+	//
+	var tmpMotionDetected = false;
+	for (var n=0; n<ImageData.data.length; n+=4) {
+		if (ImageData.data[n+1] == 255) {
+			
+			tmpMotionDetected = true;
+			
+			if (!MotionDetected) {
+				MotionCounter += 1;
+				if (MotionCounter > 1)
+					document.getElementById('MotionCounter').innerHTML = "Bevegelser oppdaget: "+ MotionCounter;
+			}
+			
+			MotionDetected = true;
+			break;
+		}
+	}
+	if (!tmpMotionDetected)
+		MotionDetected = false;
+	
+	// Tegn til feed2.
+	Feed2Ctx.clearRect(
+		0,
+		0,
+		Feed2.width,
+		Feed2.height
+	);
+	Feed2Ctx.putImageData(ImageData,0,0);
+}
+</script>
+
+<div id="createdby">
+	&copy; Dag J Nedrelid
+</div>
+</body>
+</html>
